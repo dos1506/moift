@@ -40,7 +40,7 @@ func main() {
 	}
 	defer target.Conn.Close()
 
-	name2index, err := getInterfaces(target, []string{"port1", "ha*"})
+	name2index, err := getInterfaces(target, []string{"x2.2.3."})
 	if err != nil {
 		log.Fatal(err)
 	}
