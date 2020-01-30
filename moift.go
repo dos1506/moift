@@ -41,11 +41,11 @@ func main() {
 	}
 
 	var SIUnit = map[uint64]string{
-		0: "",
-		1: "K",
-		3: "M",
-		6: "G",
-		9: "T",
+		0: " ",
+		1000: "K",
+		1000000: "M",
+		1000000000: "G",
+		1000000000000: "T",
 	}
 	var ip string = "127.0.0.1"
 	var community string = "public"
@@ -148,7 +148,7 @@ func main() {
 					divisor = divisor * 1000
 				} else {
 					traffics[ifIndex].In = traffics[ifIndex].In / divisor
-					traffics[ifIndex].InUnit = SIUnit[divisor / uint64(1000)]
+					traffics[ifIndex].InUnit = SIUnit[divisor]
 					break
 				}
 			}
@@ -159,7 +159,7 @@ func main() {
 					divisor = divisor * 1000
 				} else {
 					traffics[ifIndex].Out = traffics[ifIndex].Out / divisor
-					traffics[ifIndex].OutUnit = SIUnit[divisor / uint64(1000)]
+					traffics[ifIndex].OutUnit = SIUnit[divisor]
 					break
 				}
 			}
