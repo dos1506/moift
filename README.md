@@ -10,4 +10,4 @@ moift <ip> -c <snmp community>
 
 # Demo
 
-<video src="moift.mp4"></video>
+![](moift.gif)
