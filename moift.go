@@ -36,8 +36,17 @@ func main() {
 	type Traffic struct {
 		In uint64
 		Out uint64
+		InUnit string
+		OutUnit string
 	}
 
+	var SIUnit = map[uint64]string{
+		0: "",
+		1: "K",
+		3: "M",
+		6: "G",
+		9: "T",
+	}
 	var ip string = "127.0.0.1"
 	var community string = "public"
 	var err error
@@ -45,9 +54,10 @@ func main() {
 	var patterns = []string{".*"}
 
 	ip = os.Args[1]
-	community = os.Args[2]
 	for i:=0; i<len(os.Args); i++ {
 		switch os.Args[i] {
+		case "-c":
+			community = os.Args[i+1]
 		case "-i":
 			interval, err = strconv.Atoi(os.Args[i+1])
 			if err != nil {
@@ -98,7 +108,8 @@ func main() {
 			// <--- 24 characters ---->
 			ifIndex := inOctets[i].Name[24:]
 			if _, keyExists := interfaces[ifIndex]; keyExists {
-				traffics[ifIndex].In = (inOctets[i].Value.(uint64) - interfaces[ifIndex].ifHCInOctets) * 8
+				// calc bps
+				traffics[ifIndex].In = (inOctets[i].Value.(uint64) - interfaces[ifIndex].ifHCInOctets) * 8 / uint64(interval)
 				interfaces[ifIndex].ifHCInOctets = inOctets[i].Value.(uint64)
 				sortedIfIndexs = append(sortedIfIndexs, ifIndex)
 			}
@@ -114,7 +125,8 @@ func main() {
 			// <---- 25 characters ---->
 			ifIndex := outOctets[i].Name[25:]
 			if _, keyExists := interfaces[ifIndex]; keyExists {
-				traffics[ifIndex].Out = (outOctets[i].Value.(uint64) - interfaces[ifIndex].ifHCOutOctets) * 8
+				// calc bps
+				traffics[ifIndex].Out = (outOctets[i].Value.(uint64) - interfaces[ifIndex].ifHCOutOctets) * 8 / uint64(interval)
 				interfaces[ifIndex].ifHCOutOctets = outOctets[i].Value.(uint64)
 			}
 		}
@@ -130,18 +142,41 @@ func main() {
 
 		for i:=0; i<len(sortedIfIndexs); i++ {
 			ifIndex := sortedIfIndexs[i]
+			var divisor uint64 = 1
+			for {
+				if traffics[ifIndex].In / (divisor*1000) > 0 {
+					divisor = divisor * 1000
+				} else {
+					traffics[ifIndex].In = traffics[ifIndex].In / divisor
+					traffics[ifIndex].InUnit = SIUnit[divisor / uint64(1000)]
+					break
+				}
+			}
+
+			divisor = 1
+			for {
+				if traffics[ifIndex].Out / (divisor*1000) > 0 {
+					divisor = divisor * 1000
+				} else {
+					traffics[ifIndex].Out = traffics[ifIndex].Out / divisor
+					traffics[ifIndex].OutUnit = SIUnit[divisor / uint64(1000)]
+					break
+				}
+			}
+
 			fmt.Printf(
-				"%-10v\t %10d\t %10d\n", 
+				"%-10v\t %10d%sbps\t %10d%sbps\n", 
 				interfaces[ifIndex].ifName, 
-				traffics[ifIndex].In, 
-				traffics[ifIndex].Out)
+				traffics[ifIndex].In,
+				traffics[ifIndex].InUnit, 
+				traffics[ifIndex].Out,
+				traffics[ifIndex].OutUnit)
 		}
 
 		time.Sleep(time.Duration(interval) * time.Second)
 
 	}
 }
-
 
 func getInterfaces(target *snmp.GoSNMP, patterns []string) (map[string]*ifXEntry, error) {
 	// patterns should be able to compile
