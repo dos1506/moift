@@ -1,50 +1,50 @@
 package main
 
 import (
-	"os/exec"
-	"os"
+	"errors"
+	"fmt"
 	"log"
+	"os"
+	"os/exec"
+	"regexp"
 	"runtime"
 	"sort"
-	"fmt"
-	"regexp"
-	"time"
-	"errors"
 	"strconv"
 	"strings"
+	"time"
 
 	snmp "github.com/soniah/gosnmp"
 )
 
 var oids = map[string]string{
-	"ifIndex": "1.3.6.1.2.1.2.2.1.1",
-	"ifDescr": "1.3.6.1.2.1.2.2.1.2",
-	"ifName":  "1.3.6.1.2.1.31.1.1.1.1",
-	"ifHCInOctets": "1.3.6.1.2.1.31.1.1.1.6",
+	"ifIndex":       "1.3.6.1.2.1.2.2.1.1",
+	"ifDescr":       "1.3.6.1.2.1.2.2.1.2",
+	"ifName":        "1.3.6.1.2.1.31.1.1.1.1",
+	"ifHCInOctets":  "1.3.6.1.2.1.31.1.1.1.6",
 	"ifHCOutOctets": "1.3.6.1.2.1.31.1.1.1.10",
-	"ifXEntry": "1.3.6.1.2.1.31.1.1.1",
+	"ifXEntry":      "1.3.6.1.2.1.31.1.1.1",
 }
 
 type ifXEntry struct {
-	ifName string
-	ifHCInOctets uint64
+	ifName        string
+	ifHCInOctets  uint64
 	ifHCOutOctets uint64
 }
 
 func main() {
 
 	type Traffic struct {
-		In uint64
-		Out uint64
-		InUnit string
+		In      uint64
+		Out     uint64
+		InUnit  string
 		OutUnit string
 	}
 
 	var SIUnit = map[uint64]string{
-		0: " ",
-		1000: "K",
-		1000000: "M",
-		1000000000: "G",
+		0:             " ",
+		1000:          "K",
+		1000000:       "M",
+		1000000000:    "G",
 		1000000000000: "T",
 	}
 	var ip string = "127.0.0.1"
@@ -52,9 +52,10 @@ func main() {
 	var err error
 	var interval = 2
 	var patterns = []string{".*"}
+	var useSiUnit bool = false
 
 	ip = os.Args[1]
-	for i:=0; i<len(os.Args); i++ {
+	for i := 0; i < len(os.Args); i++ {
 		switch os.Args[i] {
 		case "-c":
 			community = os.Args[i+1]
@@ -64,19 +65,21 @@ func main() {
 				log.Fatal(err)
 			}
 		case "-p":
-			patterns = strings.FieldsFunc(os.Args[i+1], func (c rune) bool {
+			patterns = strings.FieldsFunc(os.Args[i+1], func(c rune) bool {
 				return c == ','
 			})
+		case "-h":
+			useSiUnit = true
 		}
 
-	}	
+	}
 
 	target := &snmp.GoSNMP{
-		Target: ip,
+		Target:    ip,
 		Community: community,
-		Port: 161,
-		Version: snmp.Version2c,
-		Timeout: time.Duration(1) * time.Second,
+		Port:      161,
+		Version:   snmp.Version2c,
+		Timeout:   time.Duration(1) * time.Second,
 	}
 
 	err = target.Connect()
@@ -89,7 +92,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	
+
 	traffics := map[string]*Traffic{}
 	for ifIndex := range interfaces {
 		traffics[ifIndex] = &Traffic{}
@@ -102,14 +105,14 @@ func main() {
 		}
 
 		sortedIfIndexs := []string{}
-		
-		for i:=0; i<len(inOctets); i++ {
+
+		for i := 0; i < len(inOctets); i++ {
 			// .1.3.6.1.2.1.31.1.1.1.6.<ifindex>
 			// <--- 24 characters ---->
 			ifIndex := inOctets[i].Name[24:]
 			if _, keyExists := interfaces[ifIndex]; keyExists {
 				// calc bps
-				traffics[ifIndex].In = (inOctets[i].Value.(uint64) - interfaces[ifIndex].ifHCInOctets) * 8 / uint64(interval)
+				traffics[ifIndex].In = ((inOctets[i].Value.(uint64) - interfaces[ifIndex].ifHCInOctets) * 8) / uint64(interval)
 				interfaces[ifIndex].ifHCInOctets = inOctets[i].Value.(uint64)
 				sortedIfIndexs = append(sortedIfIndexs, ifIndex)
 			}
@@ -120,13 +123,13 @@ func main() {
 			log.Fatal(err)
 		}
 
-		for i:=0; i<len(outOctets); i++ {
+		for i := 0; i < len(outOctets); i++ {
 			// .1.3.6.1.2.1.31.1.1.1.10.<ifindex>
 			// <---- 25 characters ---->
 			ifIndex := outOctets[i].Name[25:]
 			if _, keyExists := interfaces[ifIndex]; keyExists {
 				// calc bps
-				traffics[ifIndex].Out = (outOctets[i].Value.(uint64) - interfaces[ifIndex].ifHCOutOctets) * 8 / uint64(interval)
+				traffics[ifIndex].Out = ((outOctets[i].Value.(uint64) - interfaces[ifIndex].ifHCOutOctets) * 8) / uint64(interval)
 				interfaces[ifIndex].ifHCOutOctets = outOctets[i].Value.(uint64)
 			}
 		}
@@ -138,64 +141,71 @@ func main() {
 		})
 
 		clearScreen()
+		now := time.Now()
+		fmt.Printf("Fetched from %s at %d-%02d-%02d %02d:%02d:%02d\n\n",
+			target.Target,
+			now.Year(), now.Month(), now.Day(),
+			now.Hour(), now.Minute(), now.Second(),
+		)
 		fmt.Println("Interface \t In(bps)   \t Out(bps)")
 
-		for i:=0; i<len(sortedIfIndexs); i++ {
+		for i := 0; i < len(sortedIfIndexs); i++ {
 			ifIndex := sortedIfIndexs[i]
-			var divisor uint64 = 1
-			for {
-				if traffics[ifIndex].In / (divisor*1000) > 0 {
-					divisor = divisor * 1000
-				} else {
-					traffics[ifIndex].In = traffics[ifIndex].In / divisor
-					traffics[ifIndex].InUnit = SIUnit[divisor]
-					break
+			if useSiUnit == true {
+				var divisor uint64 = 1
+				for {
+					if traffics[ifIndex].In/(divisor*1000) > 0 {
+						divisor = divisor * 1000
+					} else {
+						traffics[ifIndex].In = traffics[ifIndex].In / divisor
+						traffics[ifIndex].InUnit = SIUnit[divisor]
+						break
+					}
 				}
-			}
 
-			divisor = 1
-			for {
-				if traffics[ifIndex].Out / (divisor*1000) > 0 {
-					divisor = divisor * 1000
-				} else {
-					traffics[ifIndex].Out = traffics[ifIndex].Out / divisor
-					traffics[ifIndex].OutUnit = SIUnit[divisor]
-					break
+				divisor = 1
+				for {
+					if traffics[ifIndex].Out/(divisor*1000) > 0 {
+						divisor = divisor * 1000
+					} else {
+						traffics[ifIndex].Out = traffics[ifIndex].Out / divisor
+						traffics[ifIndex].OutUnit = SIUnit[divisor]
+						break
+					}
 				}
 			}
 
 			fmt.Printf(
-				"%-10v\t %10d%sbps\t %10d%sbps\n", 
-				interfaces[ifIndex].ifName, 
+				"%-10v %10d%2sbps %10d%2sbps\n",
+				interfaces[ifIndex].ifName,
 				traffics[ifIndex].In,
-				traffics[ifIndex].InUnit, 
+				traffics[ifIndex].InUnit,
 				traffics[ifIndex].Out,
 				traffics[ifIndex].OutUnit)
 		}
 
 		time.Sleep(time.Duration(interval) * time.Second)
-
 	}
 }
 
 func getInterfaces(target *snmp.GoSNMP, patterns []string) (map[string]*ifXEntry, error) {
 	// patterns should be able to compile
 	var compiledPatterns []*regexp.Regexp
-	for i:=0; i<len(patterns); i++ {
+	for i := 0; i < len(patterns); i++ {
 		compiledPatterns = append(compiledPatterns, regexp.MustCompile(patterns[i]))
 	}
 
 	interfaces := map[string]*ifXEntry{}
-	
+
 	results, err := target.BulkWalkAll(oids["ifName"])
-	
+
 	for _, pdu := range results {
 		// .1.3.6.1.2.1.31.1.1.1.1.<ifindex>
 		// <--- 24 characters ---->
 		ifName := string(pdu.Value.([]uint8))
-		for i:=0; i<len(compiledPatterns); i++ {
+		for i := 0; i < len(compiledPatterns); i++ {
 			if compiledPatterns[i].MatchString(ifName) {
-				interfaces[pdu.Name[24:]] = &ifXEntry{ ifName: ifName }
+				interfaces[pdu.Name[24:]] = &ifXEntry{ifName: ifName}
 				break
 			}
 		}
