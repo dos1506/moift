@@ -1,6 +1,6 @@
 # MOnitor InterFace Traffic
 
-moift is bandwidth usage motEAoing tool.
+moift is bandwidth usage monitoring tool.
 
 # Usage
 
