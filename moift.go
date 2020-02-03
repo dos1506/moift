@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"os/exec"
 	"regexp"
@@ -34,25 +35,26 @@ type ifXEntry struct {
 func main() {
 
 	type Traffic struct {
-		In      uint64
-		Out     uint64
+		In      float64
+		Out     float64
 		InUnit  string
 		OutUnit string
 	}
 
-	var SIUnit = map[uint64]string{
-		0:             " ",
-		1000:          "K",
-		1000000:       "M",
-		1000000000:    "G",
-		1000000000000: "T",
+	var SIUnit = map[int]string{
+		0: " ",
+		1: "K",
+		2: "M",
+		3: "G",
+		4: "T",
+		5: "P",
 	}
+
 	var ip string = "127.0.0.1"
 	var community string = "public"
 	var err error
 	var interval = 2
 	var patterns = []string{".*"}
-	var useSiUnit bool = false
 
 	ip = os.Args[1]
 	for i := 0; i < len(os.Args); i++ {
@@ -68,10 +70,7 @@ func main() {
 			patterns = strings.FieldsFunc(os.Args[i+1], func(c rune) bool {
 				return c == ','
 			})
-		case "-h":
-			useSiUnit = true
 		}
-
 	}
 
 	target := &snmp.GoSNMP{
@@ -95,9 +94,10 @@ func main() {
 
 	traffics := map[string]*Traffic{}
 	for ifIndex := range interfaces {
-		traffics[ifIndex] = &Traffic{}
+		traffics[ifIndex] = &Traffic{ In: 0, Out: 0 }
 	}
-
+	
+	var isFirstTry bool = true
 	for {
 		inOctets, err := target.BulkWalkAll(oids["ifHCInOctets"])
 		if err != nil {
@@ -112,7 +112,7 @@ func main() {
 			ifIndex := inOctets[i].Name[24:]
 			if _, keyExists := interfaces[ifIndex]; keyExists {
 				// calc bps
-				traffics[ifIndex].In = ((inOctets[i].Value.(uint64) - interfaces[ifIndex].ifHCInOctets) * 8) / uint64(interval)
+				traffics[ifIndex].In = float64(((inOctets[i].Value.(uint64) - interfaces[ifIndex].ifHCInOctets) * 8) / uint64(interval))
 				interfaces[ifIndex].ifHCInOctets = inOctets[i].Value.(uint64)
 				sortedIfIndexs = append(sortedIfIndexs, ifIndex)
 			}
@@ -129,7 +129,7 @@ func main() {
 			ifIndex := outOctets[i].Name[25:]
 			if _, keyExists := interfaces[ifIndex]; keyExists {
 				// calc bps
-				traffics[ifIndex].Out = ((outOctets[i].Value.(uint64) - interfaces[ifIndex].ifHCOutOctets) * 8) / uint64(interval)
+				traffics[ifIndex].Out = float64(((outOctets[i].Value.(uint64) - interfaces[ifIndex].ifHCOutOctets) * 8) / uint64(interval))
 				interfaces[ifIndex].ifHCOutOctets = outOctets[i].Value.(uint64)
 			}
 		}
@@ -139,6 +139,11 @@ func main() {
 			right, _ := strconv.Atoi(sortedIfIndexs[j])
 			return left < right
 		})
+
+		if isFirstTry {
+			isFirstTry = false
+			continue
+		}
 
 		clearScreen()
 		now := time.Now()
@@ -151,32 +156,16 @@ func main() {
 
 		for i := 0; i < len(sortedIfIndexs); i++ {
 			ifIndex := sortedIfIndexs[i]
-			if useSiUnit == true {
-				var divisor uint64 = 1
-				for {
-					if traffics[ifIndex].In/(divisor*1000) > 0 {
-						divisor = divisor * 1000
-					} else {
-						traffics[ifIndex].In = traffics[ifIndex].In / divisor
-						traffics[ifIndex].InUnit = SIUnit[divisor]
-						break
-					}
-				}
-
-				divisor = 1
-				for {
-					if traffics[ifIndex].Out/(divisor*1000) > 0 {
-						divisor = divisor * 1000
-					} else {
-						traffics[ifIndex].Out = traffics[ifIndex].Out / divisor
-						traffics[ifIndex].OutUnit = SIUnit[divisor]
-						break
-					}
-				}
-			}
+			// Unit Calculation Example for 2,500,000 bps:
+			// 2,500,000 bps (2.5Mbps) / 1,000^(COUNTOF(',')) = 2.5
+			// SI unit is determined by SIUnit[COUNTOF(',')] = "M"
+			traffics[ifIndex].InUnit = SIUnit[len(strconv.Itoa(int(traffics[ifIndex].In)))/3]
+			traffics[ifIndex].OutUnit = SIUnit[len(strconv.Itoa(int(traffics[ifIndex].Out)))/3]
+			traffics[ifIndex].In = float64(traffics[ifIndex].In) / math.Pow(1000, float64(len(strconv.Itoa(int(traffics[ifIndex].In)))/3))
+			traffics[ifIndex].Out = float64(traffics[ifIndex].Out) / math.Pow(1000, float64(len(strconv.Itoa(int(traffics[ifIndex].Out)))/3))
 
 			fmt.Printf(
-				"%-10v %10d%2sbps %10d%2sbps\n",
+				"%-10v %10.2f%2sbps %10.2f%2sbps\n",
 				interfaces[ifIndex].ifName,
 				traffics[ifIndex].In,
 				traffics[ifIndex].InUnit,
