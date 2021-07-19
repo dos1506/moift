@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	snmp "github.com/soniah/gosnmp"
+	snmp "github.com/gosnmp/gosnmp"
 )
 
 var oids = map[string]string{
@@ -159,9 +159,9 @@ func main() {
 			// Unit Calculation Example for 2,500,000 bps:
 			// 2,500,000 bps (2.5Mbps) / 1,000^(COUNTOF(',')) = 2.5
 			// SI unit is determined by SIUnit[COUNTOF(',')] = "M"
-			traffics[ifIndex].InUnit = SIUnit[len(strconv.Itoa(int(traffics[ifIndex].In)))/3]
+			traffics[ifIndex].InUnit  = SIUnit[len(strconv.Itoa(int(traffics[ifIndex].In)))/3]
 			traffics[ifIndex].OutUnit = SIUnit[len(strconv.Itoa(int(traffics[ifIndex].Out)))/3]
-			traffics[ifIndex].In = float64(traffics[ifIndex].In) / math.Pow(1000, float64(len(strconv.Itoa(int(traffics[ifIndex].In)))/3))
+			traffics[ifIndex].In  = float64(traffics[ifIndex].In)  / math.Pow(1000, float64(len(strconv.Itoa(int(traffics[ifIndex].In)))/3))
 			traffics[ifIndex].Out = float64(traffics[ifIndex].Out) / math.Pow(1000, float64(len(strconv.Itoa(int(traffics[ifIndex].Out)))/3))
 
 			fmt.Printf(
