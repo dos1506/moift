@@ -1,6 +1,6 @@
 # MOnitor InterFace Traffic
 
-moift is monitoring tool for bandwidth usage by SNMP.
+Monitor multiple interfaces' bandwidth usage form CLI.
 
 # Usage
 
